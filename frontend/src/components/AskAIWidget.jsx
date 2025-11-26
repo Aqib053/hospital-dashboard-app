@@ -8,7 +8,7 @@ export default function AskAIWidget() {
     {
       role: "assistant",
       text:
-        "Hi, I’m a demo medical information assistant. I can explain lab terms and give general info, but I’m NOT a doctor. Always consult a clinician for decisions.",
+        "Hi, I’m a demo medical information assistant. I can explain lab terms and give general info, but I’m NOT a doctor. Always consult a clinician.",
     },
   ]);
   const [input, setInput] = useState("");
@@ -18,8 +18,8 @@ export default function AskAIWidget() {
     const trimmed = input.trim();
     if (!trimmed || loading) return;
 
-    const newMessages = [...messages, { role: "user", text: trimmed }];
-    setMessages(newMessages);
+    // add user message locally
+    setMessages((prev) => [...prev, { role: "user", text: trimmed }]);
     setInput("");
     setLoading(true);
 
@@ -39,14 +39,12 @@ export default function AskAIWidget() {
 
       setMessages((prev) => [
         ...prev,
-        { role: "user", text: trimmed },
         { role: "assistant", text: replyText },
       ]);
     } catch (err) {
       console.error("Chat error:", err);
       setMessages((prev) => [
         ...prev,
-        { role: "user", text: trimmed },
         {
           role: "assistant",
           text:

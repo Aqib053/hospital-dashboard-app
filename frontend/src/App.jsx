@@ -11,25 +11,17 @@ import DoctorsCorner from "./components/DoctorsCorner";
 import AskAIWidget from "./components/AskAIWidget";
 import "./index.css";
 
-// ---------- METRIC EXTRACTION PATTERNS (for trends/insights) ----------
+// ---------- METRIC EXTRACTION PATTERNS ----------
 const METRIC_PATTERNS = {
-  // HbA1c / Glycohemoglobin
   HbA1c:
     /(HbA1c|HbA1C|Glyco[\s-]*Hemoglobin|Glycated[\s-]*Haemoglobin)[^\d]{0,40}(\d+(\.\d+)?)/i,
-
-  // Fasting glucose
   FastingGlucose:
     /(Plasma[\s-]*Glucose\s*-\s*F|Fasting[\s\w:/-]*Glucose|Fasting\s*Plasma\s*Glucose|\bFPG\b)[^\d]{0,40}(\d+(\.\d+)?)/i,
-
-  // Post-prandial (PP) glucose
   PPGlucose:
     /(Plasma[\s-]*Glucose\s*-\s*PP|Post[\s-]*Prandial[\s\w:/-]*Glucose|PP\s*Glucose|\bPPG\b)[^\d]{0,40}(\d+(\.\d+)?)/i,
-
-  // Creatinine
   Creatinine: /(Creatinine)[^\d]{0,40}(\d+(\.\d+)?)/i,
 };
 
-// Pull numeric values from extracted text
 function extractMetricsFromText(text) {
   const metrics = {};
   if (!text) return metrics;
@@ -45,16 +37,13 @@ function extractMetricsFromText(text) {
 }
 
 export default function App() {
-  // Hospitals
   const [hospitals, setHospitals] = useState(["Baptist Hospital"]);
   const [selectedHospital, setSelectedHospital] = useState("Baptist Hospital");
 
-  // Current + history
   const [currentSummary, setCurrentSummary] = useState(null);
-  const [summaryHistory, setSummaryHistory] = useState({}); // { [hospital]: [records] }
-  const [historyFilter, setHistoryFilter] = useState("all"); // all | today | week
+  const [summaryHistory, setSummaryHistory] = useState({});
+  const [historyFilter, setHistoryFilter] = useState("all");
 
-  // ref pointing to the upload section (used for scrolling on mobile)
   const uploadSectionRef = useRef(null);
 
   const scrollToUpload = () => {
@@ -101,7 +90,6 @@ export default function App() {
     };
 
     setCurrentSummary(record);
-
     setSummaryHistory((prev) => {
       const existing = prev[hospital] || [];
       return {
@@ -115,22 +103,18 @@ export default function App() {
   const summaryCount = hospitalSummaries.length;
   const lastSummaryTime = summaryCount ? hospitalSummaries[0].createdAt : null;
 
-  // Filter history
   const now = new Date();
   const todayKey = now.toISOString().slice(0, 10);
   const filteredSummaries = hospitalSummaries.filter((item) => {
     if (historyFilter === "all") return true;
-
     if (historyFilter === "today") {
       return item.createdAt.slice(0, 10) === todayKey;
     }
-
     if (historyFilter === "week") {
       const d = new Date(item.createdAt);
       const diffDays = (now - d) / (1000 * 60 * 60 * 24);
       return diffDays <= 7;
     }
-
     return true;
   });
 
@@ -148,7 +132,6 @@ export default function App() {
 
       {/* MAIN CONTENT */}
       <div className="flex-1 p-4 md:p-8 overflow-y-auto">
-        {/* Header */}
         <h1 className="text-xl md:text-2xl font-bold">Hospital Dashboard</h1>
 
         <div className="flex flex-col md:flex-row md:items-center md:justify-between mt-3 mb-4 gap-3">
@@ -191,18 +174,18 @@ export default function App() {
           <InsightsPanel summary={currentSummary} />
         </div>
 
-        {/* Documentation + protocols row */}
+        {/* Documentation + protocols */}
         <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
           <DocumentationCopilot summary={currentSummary} />
           <ProtocolHints summary={currentSummary} />
         </div>
 
-        {/* Lifestyle suggestions */}
+        {/* Lifestyle */}
         <div className="mt-6">
           <LifestylePanel summary={currentSummary} />
         </div>
 
-        {/* Health trends */}
+        {/* Trends */}
         <div className="mt-6">
           <TrendsPanel summaries={hospitalSummaries} />
         </div>
@@ -281,20 +264,8 @@ export default function App() {
         </div>
       </div>
 
-      {/* Floating Ask AI widget */}
+      {/* Floating Ask AI */}
       <AskAIWidget />
-    
-    import AskAI from "./components/AskAI";  // ⬅ add at top
-
-...
-
-return (
-  <div className="flex h-screen">
-    {/* ...all existing dashboard code... */}
-
-    <AskAI />   {/* ⬅ this makes the floating AI button visible */}
-  </div>
-);
-</div>
+    </div>
   );
 }

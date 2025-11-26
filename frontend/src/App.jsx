@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import HospitalList from "./components/HospitalList";
 import UploadCard from "./components/UploadCard";
 import SummaryCard from "./components/SummaryCard";
@@ -13,7 +13,7 @@ const METRIC_PATTERNS = {
   HbA1c:
     /(HbA1c|HbA1C|Glyco[\s-]*Hemoglobin|Glycated[\s-]*Haemoglobin)[^\d]{0,40}(\d+(\.\d+)?)/i,
 
-  // Fasting glucose: many labs write it differently
+  // Fasting glucose
   FastingGlucose:
     /(Plasma[\s-]*Glucose\s*-\s*F|Fasting[\s\w:/-]*Glucose|Fasting\s*Plasma\s*Glucose|\bFPG\b)[^\d]{0,40}(\d+(\.\d+)?)/i,
 
@@ -50,12 +50,35 @@ export default function App() {
   const [summaryHistory, setSummaryHistory] = useState({}); // { [hospital]: [records] }
   const [historyFilter, setHistoryFilter] = useState("all"); // all | today | week
 
+  // 👇 ref pointing to the upload section (used for scrolling on mobile)
+  const uploadSectionRef = useRef(null);
+
+  const scrollToUpload = () => {
+    if (uploadSectionRef.current) {
+      uploadSectionRef.current.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }
+  };
+
+  // when clicking a hospital in the sidebar
+  const handleSelectHospital = (name) => {
+    setSelectedHospital(name);
+    scrollToUpload();
+  };
+
   const addHospital = () => {
     const name = prompt("Enter hospital name");
     if (!name) return;
-    if (hospitals.includes(name)) return;
+    if (hospitals.includes(name)) {
+      setSelectedHospital(name);
+      scrollToUpload();
+      return;
+    }
     setHospitals((prev) => [...prev, name]);
-    if (!selectedHospital) setSelectedHospital(name);
+    setSelectedHospital(name);
+    scrollToUpload();
   };
 
   const handleNewSummary = (hospital, data) => {
@@ -116,8 +139,8 @@ export default function App() {
         <HospitalList
           hospitals={hospitals}
           selected={selectedHospital}
-          setSelected={setSelectedHospital}
-          addHospital={addHospital}
+          setSelected={handleSelectHospital} // 👈 wrapped handler with scroll
+          addHospital={addHospital}          // 👈 our custom add (also scrolls)
         />
       </div>
 
@@ -149,7 +172,10 @@ export default function App() {
         </div>
 
         {/* Upload + summary row */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
+        <div
+          ref={uploadSectionRef} // 👈 scroll target
+          className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6"
+        >
           <UploadCard
             hospital={selectedHospital}
             onNewSummary={handleNewSummary}

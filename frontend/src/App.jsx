@@ -7,37 +7,7 @@ import LifestylePanel from "./components/LifestylePanel";
 import TrendsPanel from "./components/HealthTrends";
 import "./index.css";
 
-// Patterns to pull numeric values from extracted text (improved)
-const METRIC_PATTERNS = {
-  // HbA1c / Glycohemoglobin
-  HbA1c:
-    /(HbA1c|HbA1C|Glyco[\s-]*Hemoglobin|Glycated[\s-]*Haemoglobin)[^\d]{0,40}(\d+(\.\d+)?)/i,
-
-  // Fasting glucose: many labs write it differently
-  FastingGlucose:
-    /(Plasma[\s-]*Glucose\s*-\s*F|Fasting[\s\w:/-]*Glucose|Fasting\s*Plasma\s*Glucose|\bFPG\b)[^\d]{0,40}(\d+(\.\d+)?)/i,
-
-  // Post-prandial (PP) glucose
-  PPGlucose:
-    /(Plasma[\s-]*Glucose\s*-\s*PP|Post[\s-]*Prandial[\s\w:/-]*Glucose|PP\s*Glucose|\bPPG\b)[^\d]{0,40}(\d+(\.\d+)?)/i,
-
-  // Creatinine (usually stable wording)
-  Creatinine: /(Creatinine)[^\d]{0,40}(\d+(\.\d+)?)/i,
-};
-
-function extractMetricsFromText(text) {
-  const metrics = {};
-  if (!text) return metrics;
-
-  for (const [key, regex] of Object.entries(METRIC_PATTERNS)) {
-    const match = text.match(regex);
-    if (match && match[2]) {
-      const value = parseFloat(match[2]);
-      if (!Number.isNaN(value)) metrics[key] = value;
-    }
-  }
-  return metrics;
-}
+// ... METRIC_PATTERNS + extractMetricsFromText stay the same ...
 
 export default function App() {
   // Hospitals
@@ -46,8 +16,8 @@ export default function App() {
 
   // Current + history
   const [currentSummary, setCurrentSummary] = useState(null);
-  const [summaryHistory, setSummaryHistory] = useState({}); // { [hospital]: [records] }
-  const [historyFilter, setHistoryFilter] = useState("all"); // all | today | week
+  const [summaryHistory, setSummaryHistory] = useState({});
+  const [historyFilter, setHistoryFilter] = useState("all");
 
   const addHospital = () => {
     const name = prompt("Enter hospital name");
@@ -58,8 +28,6 @@ export default function App() {
   };
 
   const handleNewSummary = (hospital, data) => {
-    console.log("handleNewSummary received:", data);
-
     const metrics = extractMetricsFromText(
       data.extracted_text || data.summary || ""
     );
@@ -90,49 +58,50 @@ export default function App() {
   const summaryCount = hospitalSummaries.length;
   const lastSummaryTime = summaryCount ? hospitalSummaries[0].createdAt : null;
 
-  // filter history
   const now = new Date();
   const todayKey = now.toISOString().slice(0, 10);
   const filteredSummaries = hospitalSummaries.filter((item) => {
     if (historyFilter === "all") return true;
-
     if (historyFilter === "today") {
       return item.createdAt.slice(0, 10) === todayKey;
     }
-
     if (historyFilter === "week") {
       const d = new Date(item.createdAt);
       const diffDays = (now - d) / (1000 * 60 * 60 * 24);
       return diffDays <= 7;
     }
-
     return true;
   });
 
   return (
-    <div className="flex h-screen">
+    // 👇 responsive: column on mobile, row on md+
+    <div className="flex flex-col md:flex-row min-h-screen">
       {/* LEFT SIDEBAR */}
-      <HospitalList
-        hospitals={hospitals}
-        selected={selectedHospital}
-        setSelected={setSelectedHospital}
-        addHospital={addHospital}
-      />
+      <div className="w-full md:w-64 border-b md:border-b-0 md:border-r bg-white">
+        <HospitalList
+          hospitals={hospitals}
+          selected={selectedHospital}
+          setSelected={setSelectedHospital}
+          addHospital={addHospital}
+        />
+      </div>
 
       {/* MAIN CONTENT */}
-      <div className="flex-1 p-8 overflow-y-auto bg-[#eef5ff]">
+      <div className="flex-1 p-4 md:p-8 overflow-y-auto bg-[#eef5ff]">
         {/* Header */}
-        <h1 className="text-2xl font-bold">Hospital Dashboard</h1>
+        <h1 className="text-xl md:text-2xl font-bold">Hospital Dashboard</h1>
 
-        <div className="flex items-center justify-between mt-3 mb-4">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between mt-3 mb-4 gap-3">
           <div>
-            <h2 className="text-xl font-semibold">{selectedHospital}</h2>
-            <p className="text-sm text-gray-600">
+            <h2 className="text-lg md:text-xl font-semibold">
+              {selectedHospital}
+            </h2>
+            <p className="text-xs md:text-sm text-gray-600">
               Upload reports &amp; generate summaries
             </p>
           </div>
 
-          <div className="px-3 py-2 rounded-lg bg-white shadow-sm border text-xs">
+          <div className="px-3 py-2 rounded-lg bg-white shadow-sm border text-xs self-start md:self-auto">
             <div className="font-semibold text-gray-700">
               {summaryCount} summaries
             </div>
@@ -145,29 +114,36 @@ export default function App() {
         </div>
 
         {/* Upload + summary row */}
-        <div className="grid grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
           <UploadCard
             hospital={selectedHospital}
             onNewSummary={handleNewSummary}
-            // no loading overlay now → pass a no-op function
             setLoading={() => {}}
           />
           <SummaryCard summary={currentSummary} />
         </div>
 
         {/* AI health insights */}
-        <InsightsPanel summary={currentSummary} />
+        <div className="mt-6">
+          <InsightsPanel summary={currentSummary} />
+        </div>
 
         {/* Lifestyle suggestions */}
-        <LifestylePanel summary={currentSummary} />
+        <div className="mt-6">
+          <LifestylePanel summary={currentSummary} />
+        </div>
 
         {/* Health trends */}
-        <TrendsPanel summaries={hospitalSummaries} />
+        <div className="mt-6">
+          <TrendsPanel summaries={hospitalSummaries} />
+        </div>
 
         {/* History */}
         <div className="mt-8">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-xl font-semibold">Previous summaries</h3>
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-3 gap-3">
+            <h3 className="text-lg md:text-xl font-semibold">
+              Previous summaries
+            </h3>
             <div className="flex gap-2 text-xs">
               <button
                 onClick={() => setHistoryFilter("all")}

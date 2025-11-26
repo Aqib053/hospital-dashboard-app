@@ -1,5 +1,7 @@
 import React, { useState } from "react";
 
+const API_BASE = "https://hospital-backend-iqva.onrender.com";
+
 export default function UploadCard({ hospital, onNewSummary, setLoading }) {
   const [file, setFile] = useState(null);
   const [error, setError] = useState(null);
@@ -26,7 +28,7 @@ export default function UploadCard({ hospital, onNewSummary, setLoading }) {
       form.append("hospital_name", hospital);
 
       console.log("Sending fetch to backend…");
-      const res = await fetch("http://127.0.0.1:8000/upload", {
+      const res = await fetch(`${API_BASE}/upload`, {
         method: "POST",
         body: form,
       });

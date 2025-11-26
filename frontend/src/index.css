@@ -1,0 +1,42 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Global design */
+body {
+  background: linear-gradient(to bottom right, #eef6ff, #ddeaff);
+  font-family: system-ui, sans-serif;
+}
+
+/* Button */
+.btn-primary {
+  background: #2563eb;
+  color: white;
+  font-weight: 600;
+  padding: 8px 14px;
+  border-radius: 6px;
+  transition: 0.2s;
+}
+.btn-primary:hover {
+  background: #1d4ed8;
+}
+
+/* Card */
+.card {
+  background: white;
+  padding: 18px;
+  border-radius: 14px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.05);
+}
+
+/* Loading Spinner */
+.loader {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: 4px solid rgba(59,130,246,0.3);
+  border-top-color: #2563eb;
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }

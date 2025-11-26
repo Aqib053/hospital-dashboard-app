@@ -9,10 +9,15 @@ from datetime import datetime
 
 app = FastAPI()
 
-# Allow your React frontend to call this API
+# Allow your React frontend (local + Vercel) to call this API
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:5174"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://localhost:5174",
+    ],
+    # allow any *.vercel.app frontend (your deployed UI)
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

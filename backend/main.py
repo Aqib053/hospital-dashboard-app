@@ -17,7 +17,6 @@ app.add_middleware(
         "http://localhost:5174",
         "https://hospital-dashboard-app.vercel.app",  # your live frontend
     ],
-    # also allow any *.vercel.app (in case you rename the project)
     allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
@@ -67,33 +66,37 @@ def extract_text_from_pdf(file_bytes: bytes):
         return ocr_text_full, True
     except Exception as e:
         print("OCR error:", e)
-        raise HTTPException(status_code=500, detail="Failed to extract text from PDF.")
+        raise HTTPException(
+            status_code=500, detail="Failed to extract text from PDF."
+        )
 
 
 def build_simple_summary(text: str) -> str:
     """
-    NOT using any AI / API key.
-    Just picks out the "Abnormal Result(s) Summary" section if present,
-    otherwise returns the first chunk of the report.
+    Rule-based summary (no external AI):
+    - Try to pick 'Abnormal Result(s) Summary', 'Impression', 'Conclusion', or 'Summary'
+    - Otherwise, return the first ~1200 characters.
     """
-
     if not text:
         return "No text could be extracted from this report."
 
-    lower_text = text.lower()
-    marker = "abnormal result(s) summary".lower()
+    lower = text.lower()
 
-    if marker in lower_text:
-        start_idx = lower_text.index(marker)
-        end_marker = "abnormal result(s) summary end".lower()
-        if end_marker in lower_text[start_idx:]:
-            end_idx = lower_text.index(end_marker, start_idx)
-        else:
-            # take roughly 1200 characters from that section
+    # ordered list of markers to search for
+    markers = [
+        "abnormal result(s) summary",
+        "impression",
+        "conclusion",
+        "summary",
+    ]
+
+    for marker in markers:
+        if marker in lower:
+            start_idx = lower.index(marker)
+            # take ~1200 chars from there
             end_idx = min(len(text), start_idx + 1200)
-
-        block = text[start_idx:end_idx]
-        return block.strip()
+            block = text[start_idx:end_idx]
+            return block.strip()
 
     # fallback: first ~1200 characters
     return text[:1200].strip()
@@ -119,7 +122,7 @@ async def upload_pdf(
     # 1) Extract text (text or OCR)
     extracted_text, used_ocr = extract_text_from_pdf(file_bytes)
 
-    # 2) Build non-AI summary
+    # 2) Build summary
     summary = build_simple_summary(extracted_text)
 
     # 3) Build response object

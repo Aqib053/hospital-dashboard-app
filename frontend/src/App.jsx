@@ -7,7 +7,38 @@ import LifestylePanel from "./components/LifestylePanel";
 import TrendsPanel from "./components/HealthTrends";
 import "./index.css";
 
-// ... METRIC_PATTERNS + extractMetricsFromText stay the same ...
+// ---------- METRIC EXTRACTION PATTERNS (for trends/insights) ----------
+const METRIC_PATTERNS = {
+  // HbA1c / Glycohemoglobin
+  HbA1c:
+    /(HbA1c|HbA1C|Glyco[\s-]*Hemoglobin|Glycated[\s-]*Haemoglobin)[^\d]{0,40}(\d+(\.\d+)?)/i,
+
+  // Fasting glucose: many labs write it differently
+  FastingGlucose:
+    /(Plasma[\s-]*Glucose\s*-\s*F|Fasting[\s\w:/-]*Glucose|Fasting\s*Plasma\s*Glucose|\bFPG\b)[^\d]{0,40}(\d+(\.\d+)?)/i,
+
+  // Post-prandial (PP) glucose
+  PPGlucose:
+    /(Plasma[\s-]*Glucose\s*-\s*PP|Post[\s-]*Prandial[\s\w:/-]*Glucose|PP\s*Glucose|\bPPG\b)[^\d]{0,40}(\d+(\.\d+)?)/i,
+
+  // Creatinine
+  Creatinine: /(Creatinine)[^\d]{0,40}(\d+(\.\d+)?)/i,
+};
+
+// Pull numeric values from extracted text
+function extractMetricsFromText(text) {
+  const metrics = {};
+  if (!text) return metrics;
+
+  for (const [key, regex] of Object.entries(METRIC_PATTERNS)) {
+    const match = text.match(regex);
+    if (match && match[2]) {
+      const value = parseFloat(match[2]);
+      if (!Number.isNaN(value)) metrics[key] = value;
+    }
+  }
+  return metrics;
+}
 
 export default function App() {
   // Hospitals
@@ -16,8 +47,8 @@ export default function App() {
 
   // Current + history
   const [currentSummary, setCurrentSummary] = useState(null);
-  const [summaryHistory, setSummaryHistory] = useState({});
-  const [historyFilter, setHistoryFilter] = useState("all");
+  const [summaryHistory, setSummaryHistory] = useState({}); // { [hospital]: [records] }
+  const [historyFilter, setHistoryFilter] = useState("all"); // all | today | week
 
   const addHospital = () => {
     const name = prompt("Enter hospital name");
@@ -58,24 +89,28 @@ export default function App() {
   const summaryCount = hospitalSummaries.length;
   const lastSummaryTime = summaryCount ? hospitalSummaries[0].createdAt : null;
 
+  // Filter history
   const now = new Date();
   const todayKey = now.toISOString().slice(0, 10);
   const filteredSummaries = hospitalSummaries.filter((item) => {
     if (historyFilter === "all") return true;
+
     if (historyFilter === "today") {
       return item.createdAt.slice(0, 10) === todayKey;
     }
+
     if (historyFilter === "week") {
       const d = new Date(item.createdAt);
       const diffDays = (now - d) / (1000 * 60 * 60 * 24);
       return diffDays <= 7;
     }
+
     return true;
   });
 
   return (
-    // 👇 responsive: column on mobile, row on md+
-    <div className="flex flex-col md:flex-row min-h-screen">
+    // responsive: column on mobile, row on md+
+    <div className="flex flex-col md:flex-row min-h-screen bg-[#eef5ff] overflow-x-hidden">
       {/* LEFT SIDEBAR */}
       <div className="w-full md:w-64 border-b md:border-b-0 md:border-r bg-white">
         <HospitalList
@@ -87,7 +122,7 @@ export default function App() {
       </div>
 
       {/* MAIN CONTENT */}
-      <div className="flex-1 p-4 md:p-8 overflow-y-auto bg-[#eef5ff]">
+      <div className="flex-1 p-4 md:p-8 overflow-y-auto">
         {/* Header */}
         <h1 className="text-xl md:text-2xl font-bold">Hospital Dashboard</h1>
 
@@ -139,7 +174,7 @@ export default function App() {
         </div>
 
         {/* History */}
-        <div className="mt-8">
+        <div className="mt-8 pb-8">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-3 gap-3">
             <h3 className="text-lg md:text-xl font-semibold">
               Previous summaries

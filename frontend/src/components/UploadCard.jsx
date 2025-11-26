@@ -85,11 +85,7 @@ export default function UploadCard({ hospital, onNewSummary, setLoading }) {
         Upload &amp; Summarize
       </button>
 
-      {error && (
-        <p className="text-xs text-red-600 mt-2">
-          {error}
-        </p>
-      )}
+      {error && <p className="text-xs text-red-600 mt-2">{error}</p>}
 
       <p className="text-xs text-gray-500 mt-2">
         PDF / PNG / JPG supported (OCR active for scanned reports).

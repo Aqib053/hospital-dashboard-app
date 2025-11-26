@@ -6,6 +6,13 @@ from pdf2image import convert_from_bytes
 import pytesseract
 from io import BytesIO
 from datetime import datetime
+import os
+
+# --- Optional: Gemini client ---
+try:
+    import google.generativeai as genai
+except ImportError:
+    genai = None
 
 app = FastAPI()
 
@@ -33,6 +40,15 @@ class HealthSummary(BaseModel):
     created_at: str
 
 
+class ChatRequest(BaseModel):
+    message: str
+
+
+class ChatResponse(BaseModel):
+    reply: str
+
+
+# ---- PDF TEXT + SUMMARY LOGIC ------------------------------------------------
 def extract_text_from_pdf(file_bytes: bytes):
     """
     1) Try to read as normal text PDF using pdfplumber.
@@ -82,7 +98,6 @@ def build_simple_summary(text: str) -> str:
 
     lower = text.lower()
 
-    # ordered list of markers to search for
     markers = [
         "abnormal result(s) summary",
         "impression",
@@ -93,15 +108,14 @@ def build_simple_summary(text: str) -> str:
     for marker in markers:
         if marker in lower:
             start_idx = lower.index(marker)
-            # take ~1200 chars from there
             end_idx = min(len(text), start_idx + 1200)
             block = text[start_idx:end_idx]
             return block.strip()
 
-    # fallback: first ~1200 characters
     return text[:1200].strip()
 
 
+# ---- ROOT + UPLOAD ENDPOINTS -------------------------------------------------
 @app.get("/")
 def root():
     return {"message": "Hospital summarizer backend OK"}
@@ -136,3 +150,92 @@ async def upload_pdf(
     )
 
     return result
+
+
+# ---- ASK-AI CHAT ENDPOINT ----------------------------------------------------
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
+if genai is not None and GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
+else:
+    if genai is None:
+        print("google-generativeai not installed; /chat will use fallback replies.")
+    if not GEMINI_API_KEY:
+        print("GEMINI_API_KEY not set; /chat will use fallback replies.")
+
+
+def _fallback_chat_reply(user_message: str) -> str:
+    """Safe, rule-based answer if Gemini/DeepSeek is not available."""
+    text = (user_message or "").lower()
+
+    base = (
+        "I’m a demo medical information assistant, not a doctor. "
+        "I can explain general concepts but I cannot diagnose, treat, or replace a clinician.\n\n"
+    )
+
+    if any(k in text for k in ["diabetes", "sugar", "hba1c"]):
+        detail = (
+            "In diabetes care, clinicians usually focus on blood sugar control, lifestyle "
+            "changes, regular lab monitoring (like HbA1c, fasting and post-meal sugars) and "
+            "screening for complications (eyes, kidneys, nerves, heart). Exact decisions "
+            "depend on the individual patient and local guidelines."
+        )
+    elif any(k in text for k in ["blood pressure", "bp", "hypertension"]):
+        detail = (
+            "For high blood pressure, typical management includes regular BP checks, salt "
+            "restriction, exercise, weight control and medications when prescribed. Targets "
+            "and medicines depend on age, comorbidities and overall risk profile."
+        )
+    else:
+        detail = (
+            "In general, doctors combine symptoms, examination, labs and imaging to decide "
+            "diagnosis and treatment. Any online answer is only general information and "
+            "must be confirmed with a qualified clinician who knows the full case."
+        )
+
+    return base + detail
+
+
+@app.post("/chat", response_model=ChatResponse)
+async def chat_endpoint(req: ChatRequest):
+    """
+    Demo medical info chatbot.
+
+    • If GEMINI_API_KEY is set and google-generativeai is installed:
+        → uses Gemini model for the reply.
+    • Otherwise:
+        → uses safe, rule-based fallback text.
+    """
+    user_message = req.message or ""
+
+    # --- If Gemini not available, use fallback ------------------------------
+    if genai is None or not GEMINI_API_KEY:
+        reply = _fallback_chat_reply(user_message)
+        return ChatResponse(reply=reply)
+
+    # --- Gemini call --------------------------------------------------------
+    system_prompt = (
+        "You are a cautious medical information assistant for doctors and patients.\n"
+        "- You ONLY provide general medical information and education.\n"
+        "- You NEVER give personal diagnosis, prescriptions, or emergency advice.\n"
+        "- Always remind users to consult a qualified clinician for decisions.\n"
+        "- If the question is about emergencies (chest pain, stroke, suicide, etc.), "
+        "tell them to seek urgent in-person care immediately.\n"
+    )
+
+    try:
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        response = model.generate_content(
+            [
+                system_prompt,
+                f"User message: {user_message}",
+            ]
+        )
+        answer_text = (response.text or "").strip()
+        if not answer_text:
+            answer_text = _fallback_chat_reply(user_message)
+    except Exception as e:
+        print("Gemini error:", e)
+        answer_text = _fallback_chat_reply(user_message)
+
+    return ChatResponse(reply=answer_text)

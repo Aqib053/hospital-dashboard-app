@@ -1,184 +1,127 @@
 import React, { useState } from "react";
-import jsPDF from "jspdf";
 
 export default function SummaryCard({ summary }) {
-  const [activeTab, setActiveTab] = useState("summary"); // "summary" | "full"
+  const [activeTab, setActiveTab] = useState("ai"); // "ai" | "full"
+  const [copyStatus, setCopyStatus] = useState("");
 
   if (!summary) {
     return (
-      <div className="card h-[300px]">
+      <div className="card">
         <h3 className="text-lg font-semibold mb-2">Summary</h3>
-        <p className="text-gray-500 text-sm">
+        <p className="text-sm text-gray-500">
           Upload a report to generate summary.
         </p>
       </div>
     );
   }
 
-  const currentText =
-    activeTab === "summary"
-      ? summary.summary
-      : summary.extracted_text || "Full text not available.";
+  const createdDate = new Date(summary.createdAt || summary.created_at || Date.now());
 
-  const copyToClipboard = async () => {
+  const aiText = summary.summary || "";
+  const fullText = summary.extracted_text || aiText;
+
+  const currentText = activeTab === "ai" ? aiText : fullText;
+
+  const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(currentText || "");
-      alert("Copied to clipboard");
-    } catch {
-      alert("Copy failed");
+      setCopyStatus("Copied!");
+      setTimeout(() => setCopyStatus(""), 1500);
+    } catch (err) {
+      console.error("Copy failed:", err);
+      setCopyStatus("Copy failed");
+      setTimeout(() => setCopyStatus(""), 1500);
     }
   };
 
-  const downloadText = () => {
-    const blob = new Blob([currentText || ""], {
-      type: "text/plain;charset=utf-8",
-    });
+  const downloadTextFile = (ext = "txt") => {
+    const blob = new Blob([currentText || ""], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    const suffix = activeTab === "summary" ? "-summary" : "-full";
+    const baseName = summary.filename || "report";
+
     a.href = url;
-    a.download = (summary.filename || "report") + suffix + ".txt";
+    a.download = `${baseName}.${ext}`;
+    document.body.appendChild(a);
     a.click();
+    document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
 
-  const downloadPdf = () => {
-    const doc = new jsPDF({ unit: "pt", format: "a4" });
-    let y = 40;
-    const safe = (v) => (v ? String(v) : "");
-
-    doc.setFontSize(16);
-    doc.text("Hospital Report Summary", 40, y);
-    y += 24;
-
-    doc.setFontSize(11);
-    if (summary.hospital) {
-      doc.text(`Hospital: ${safe(summary.hospital)}`, 40, y);
-      y += 14;
-    }
-    doc.text(`File: ${safe(summary.filename)}`, 40, y);
-    y += 14;
-
-    if (summary.createdAt) {
-      doc.text(
-        `Created: ${new Date(summary.createdAt).toLocaleString()}`,
-        40,
-        y
-      );
-      y += 16;
-    }
-
-    doc.text(
-      `Mode: ${summary.used_ocr ? "OCR (scanned document)" : "Text PDF"}`,
-      40,
-      y
-    );
-    y += 22;
-
-    const maxWidth = 515;
-    const pageHeight = doc.internal.pageSize.getHeight();
-
-    const addSection = (label, text) => {
-      if (!text) return;
-      if (y > pageHeight - 80) {
-        doc.addPage();
-        y = 40;
-      }
-      doc.setFontSize(13);
-      doc.text(label, 40, y);
-      y += 18;
-
-      doc.setFontSize(10);
-      const lines = doc.splitTextToSize(safe(text), maxWidth);
-      lines.forEach((line) => {
-        if (y > pageHeight - 40) {
-          doc.addPage();
-          y = 40;
-        }
-        doc.text(line, 40, y);
-        y += 14;
-      });
-      y += 10;
-    };
-
-    addSection("AI Summary", summary.summary);
-    addSection("Full report text", summary.extracted_text);
-
-    const filename = (summary.filename || "report") + "-summary.pdf";
-    doc.save(filename);
-  };
-
   return (
-    <div className="card h-[300px] flex flex-col">
-      <h3 className="text-lg font-semibold mb-1">Summary</h3>
+    <div className="card h-full flex flex-col">
+      <h3 className="text-lg font-semibold mb-2">Summary</h3>
 
-      <div className="mb-2 text-xs text-gray-600">
+      {/* Meta info */}
+      <div className="text-xs text-gray-600 mb-3 space-y-0.5">
         <div>
           <span className="font-semibold">File:</span>{" "}
-          {summary.filename || "—"}
+          {summary.filename || "Report"}
         </div>
-        {summary.createdAt && (
-          <div>
-            <span className="font-semibold">Created:</span>{" "}
-            {new Date(summary.createdAt).toLocaleString()}
-          </div>
-        )}
+        <div>
+          <span className="font-semibold">Created:</span>{" "}
+          {createdDate.toLocaleString()}
+        </div>
         <div>
           <span className="font-semibold">Mode:</span>{" "}
-          {summary.used_ocr ? "OCR (scanned document)" : "Text PDF"}
+          {summary.used_ocr ? "Scanned PDF (OCR)" : "Text PDF"}
         </div>
       </div>
 
-      <div className="flex items-center justify-between mb-2 text-xs">
-        <div className="flex gap-2">
+      {/* Tabs + actions */}
+      <div className="flex flex-wrap items-center gap-2 mb-3">
+        <div className="flex rounded-full bg-gray-100 p-1 text-xs">
           <button
-            onClick={() => setActiveTab("summary")}
-            className={`px-3 py-1 rounded-full border ${
-              activeTab === "summary"
-                ? "bg-blue-500 text-white border-blue-500"
-                : "bg-white text-gray-700"
+            onClick={() => setActiveTab("ai")}
+            className={`px-3 py-1 rounded-full ${
+              activeTab === "ai"
+                ? "bg-blue-600 text-white shadow-sm"
+                : "text-gray-700"
             }`}
           >
             AI Summary
           </button>
           <button
             onClick={() => setActiveTab("full")}
-            className={`px-3 py-1 rounded-full border ${
+            className={`px-3 py-1 rounded-full ${
               activeTab === "full"
-                ? "bg-blue-500 text-white border-blue-500"
-                : "bg-white text-gray-700"
+                ? "bg-blue-600 text-white shadow-sm"
+                : "text-gray-700"
             }`}
           >
             Full report text
           </button>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2 text-xs">
           <button
-            onClick={copyToClipboard}
-            className="px-2 py-1 rounded border bg-white hover:bg-gray-100"
+            onClick={handleCopy}
+            className="px-3 py-1 rounded-full border bg-white hover:bg-gray-50"
           >
             Copy
           </button>
           <button
-            onClick={downloadText}
-            className="px-2 py-1 rounded border bg-white hover:bg-gray-100"
+            onClick={() => downloadTextFile("txt")}
+            className="px-3 py-1 rounded-full border bg-white hover:bg-gray-50"
           >
             Download .txt
           </button>
           <button
-            onClick={downloadPdf}
-            className="px-2 py-1 rounded border bg-white hover:bg-gray-100"
+            onClick={() => downloadTextFile("pdf")}
+            className="px-3 py-1 rounded-full border bg-white hover:bg-gray-50"
           >
             Download PDF
           </button>
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto border rounded-md bg-gray-50 p-2 text-xs">
-        <pre className="whitespace-pre-wrap text-gray-800 leading-relaxed">
-          {currentText}
-        </pre>
+      {copyStatus && (
+        <div className="text-[11px] text-green-600 mb-2">{copyStatus}</div>
+      )}
+
+      {/* Text area */}
+      <div className="flex-1 min-h-[160px] max-h-80 overflow-y-auto text-xs md:text-sm bg-gray-50 rounded-md border px-3 py-2 whitespace-pre-wrap leading-relaxed">
+        {currentText || "No text available for this report."}
       </div>
     </div>
   );

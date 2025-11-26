@@ -5,6 +5,10 @@ import SummaryCard from "./components/SummaryCard";
 import InsightsPanel from "./components/InsightsPanel";
 import LifestylePanel from "./components/LifestylePanel";
 import TrendsPanel from "./components/HealthTrends";
+import DocumentationCopilot from "./components/DocumentationCopilot";
+import ProtocolHints from "./components/ProtocolHints";
+import DoctorsCorner from "./components/DoctorsCorner";
+import AskAIWidget from "./components/AskAIWidget";
 import "./index.css";
 
 // ---------- METRIC EXTRACTION PATTERNS (for trends/insights) ----------
@@ -50,7 +54,7 @@ export default function App() {
   const [summaryHistory, setSummaryHistory] = useState({}); // { [hospital]: [records] }
   const [historyFilter, setHistoryFilter] = useState("all"); // all | today | week
 
-  // 👇 ref pointing to the upload section (used for scrolling on mobile)
+  // ref pointing to the upload section (used for scrolling on mobile)
   const uploadSectionRef = useRef(null);
 
   const scrollToUpload = () => {
@@ -62,7 +66,6 @@ export default function App() {
     }
   };
 
-  // when clicking a hospital in the sidebar
   const handleSelectHospital = (name) => {
     setSelectedHospital(name);
     scrollToUpload();
@@ -132,15 +135,14 @@ export default function App() {
   });
 
   return (
-    // responsive: column on mobile, row on md+
-    <div className="flex flex-col md:flex-row min-h-screen bg-[#eef5ff] overflow-x-hidden">
+    <div className="relative flex flex-col md:flex-row min-h-screen bg-[#eef5ff] overflow-x-hidden">
       {/* LEFT SIDEBAR */}
       <div className="w-full md:w-64 border-b md:border-b-0 md:border-r bg-white">
         <HospitalList
           hospitals={hospitals}
           selected={selectedHospital}
-          setSelected={handleSelectHospital} // 👈 wrapped handler with scroll
-          addHospital={addHospital}          // 👈 our custom add (also scrolls)
+          setSelected={handleSelectHospital}
+          addHospital={addHospital}
         />
       </div>
 
@@ -173,7 +175,7 @@ export default function App() {
 
         {/* Upload + summary row */}
         <div
-          ref={uploadSectionRef} // 👈 scroll target
+          ref={uploadSectionRef}
           className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6"
         >
           <UploadCard
@@ -189,6 +191,12 @@ export default function App() {
           <InsightsPanel summary={currentSummary} />
         </div>
 
+        {/* Documentation + protocols row */}
+        <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
+          <DocumentationCopilot summary={currentSummary} />
+          <ProtocolHints summary={currentSummary} />
+        </div>
+
         {/* Lifestyle suggestions */}
         <div className="mt-6">
           <LifestylePanel summary={currentSummary} />
@@ -199,8 +207,13 @@ export default function App() {
           <TrendsPanel summaries={hospitalSummaries} />
         </div>
 
+        {/* Doctor's Corner */}
+        <div className="mt-8">
+          <DoctorsCorner summaries={hospitalSummaries} />
+        </div>
+
         {/* History */}
-        <div className="mt-8 pb-8">
+        <div className="mt-8 pb-10">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-3 gap-3">
             <h3 className="text-lg md:text-xl font-semibold">
               Previous summaries
@@ -267,6 +280,21 @@ export default function App() {
           )}
         </div>
       </div>
-    </div>
+
+      {/* Floating Ask AI widget */}
+      <AskAIWidget />
+    
+    import AskAI from "./components/AskAI";  // ⬅ add at top
+
+...
+
+return (
+  <div className="flex h-screen">
+    {/* ...all existing dashboard code... */}
+
+    <AskAI />   {/* ⬅ this makes the floating AI button visible */}
+  </div>
+);
+</div>
   );
 }

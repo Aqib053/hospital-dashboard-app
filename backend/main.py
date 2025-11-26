@@ -15,8 +15,9 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:5173",
         "http://localhost:5174",
+        "https://hospital-dashboard-app.vercel.app",  # your live frontend
     ],
-    # allow any *.vercel.app frontend (your deployed UI)
+    # also allow any *.vercel.app (in case you rename the project)
     allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
@@ -109,7 +110,9 @@ async def upload_pdf(
     hospital_name: str = Form(...),
 ):
     if not pdf.filename.lower().endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Only PDF files are supported right now.")
+        raise HTTPException(
+            status_code=400, detail="Only PDF files are supported right now."
+        )
 
     file_bytes = await pdf.read()
 

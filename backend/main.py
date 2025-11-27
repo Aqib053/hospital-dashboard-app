@@ -133,15 +133,12 @@ if genai is not None and GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
 else:
     if genai is None:
-        print("google-generativeai not installed; /chat using fallback.")
+        print("google-generativeai not installed; /chat will use fallback.")
     if not GEMINI_API_KEY:
-        print("GEMINI_API_KEY not set; /chat using fallback.")
+        print("GEMINI_API_KEY not set; /chat will use fallback.")
 
 
 def fallback_reply(user_message: str) -> str:
-    """
-    Question-specific safe answer if Gemini is unavailable.
-    """
     msg = (user_message or "").strip()
     lower = msg.lower()
 
@@ -152,11 +149,10 @@ def fallback_reply(user_message: str) -> str:
         "please consult a qualified clinician.\n\n"
     )
 
-    # Simple routing by keywords
     if any(k in lower for k in ["hba1c", "hb a1c", "diabetes", "sugar", "glucose"]):
         body = (
             "• **HbA1c** shows average blood glucose over ~3 months.\n"
-            "• Typical ranges (may vary by guidelines):\n"
+            "• Typical ranges (can vary by lab):\n"
             "  - < 5.7%: usually non-diabetic\n"
             "  - 5.7–6.4%: pre-diabetes range\n"
             "  - ≥ 6.5%: diabetes range\n"
@@ -182,25 +178,55 @@ def fallback_reply(user_message: str) -> str:
             "Doctors usually combine:\n"
             "• History and physical examination\n"
             "• Lab reports and imaging\n"
-            "before deciding diagnosis or treatment.\n"
-            "Online tools are only for education and must not replace a doctor visit."
+            "before deciding diagnosis or treatment. Online tools are only for "
+            "education and must not replace a doctor visit."
         )
 
     return header + disclaimer + body
+
+
+def extract_gemini_text(response) -> str:
+    """
+    Safely extract text from Gemini response for different SDK versions.
+    """
+    if not response:
+        return ""
+
+    # Newer SDKs often expose .text
+    text = getattr(response, "text", None)
+    if isinstance(text, str) and text.strip():
+        return text.strip()
+
+    # Fallback: dig into candidates / parts
+    candidates = getattr(response, "candidates", None) or []
+    parts_text = []
+    for cand in candidates:
+        content = getattr(cand, "content", None)
+        if not content:
+            continue
+        parts = getattr(content, "parts", []) or []
+        for part in parts:
+            part_text = getattr(part, "text", None)
+            if isinstance(part_text, str) and part_text.strip():
+                parts_text.append(part_text.strip())
+
+    return "\n".join(parts_text).strip()
 
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat(req: ChatRequest):
     user_message = req.message or ""
 
+    # If Gemini isn’t configured, always fallback
     if genai is None or not GEMINI_API_KEY:
         return ChatResponse(reply=fallback_reply(user_message))
 
     system_prompt = (
-        "You are a cautious medical information assistant.\n"
-        "- Provide general information only, no personal diagnosis or prescriptions.\n"
-        "- Always remind users to consult a doctor for medical decisions.\n"
-        "- Use short paragraphs and bullet points.\n"
+        "You are a cautious medical information assistant for doctors and patients.\n"
+        "- Provide general, educational information only; no personal diagnosis or prescriptions.\n"
+        "- Prefer bullet points and short paragraphs.\n"
+        "- If user asks about lab values (HbA1c, glucose, creatinine, etc.), explain typical ranges and interpretation.\n"
+        "- Always remind them to confirm with a clinician.\n"
     )
 
     try:
@@ -208,8 +234,9 @@ async def chat(req: ChatRequest):
         response = model.generate_content(
             [system_prompt, f"User question: {user_message}"]
         )
-        text = (getattr(response, "text", "") or "").strip()
+        text = extract_gemini_text(response)
         if not text:
+            print("Gemini returned empty text; using fallback.")
             text = fallback_reply(user_message)
     except Exception as e:
         print("Gemini error:", e)

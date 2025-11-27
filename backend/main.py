@@ -8,7 +8,7 @@ from io import BytesIO
 from datetime import datetime
 import os
 
-# --- Optional: Gemini client ---
+# Gemini client (optional)
 try:
     import google.generativeai as genai
 except ImportError:
@@ -16,13 +16,12 @@ except ImportError:
 
 app = FastAPI()
 
-# Allow your React frontend (local + Vercel) to call this API
+# CORS: local dev + any *.vercel.app
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5173",
         "http://localhost:5174",
-        "https://hospital-dashboard-app.vercel.app",  # your live frontend
     ],
     allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
@@ -48,29 +47,21 @@ class ChatResponse(BaseModel):
     reply: str
 
 
-# ---- PDF TEXT + SUMMARY LOGIC ------------------------------------------------
 def extract_text_from_pdf(file_bytes: bytes):
-    """
-    1) Try to read as normal text PDF using pdfplumber.
-    2) If that fails or text is empty, fall back to OCR on images.
-    """
     text = ""
-
-    # ----- Try normal text extraction -----
     try:
         with pdfplumber.open(BytesIO(file_bytes)) as pdf:
-            parts = []
+            pages = []
             for page in pdf.pages:
-                page_text = page.extract_text() or ""
-                parts.append(page_text)
-            text = "\n".join(parts).strip()
+                t = page.extract_text() or ""
+                pages.append(t)
+            text = "\n".join(pages).strip()
     except Exception as e:
         print("pdfplumber error:", e)
 
     if text:
-        return text, False  # used_ocr = False
+        return text, False
 
-    # ----- Fallback: OCR (for scanned PDFs) -----
     try:
         print("Falling back to OCR...")
         images = convert_from_bytes(file_bytes)
@@ -78,47 +69,39 @@ def extract_text_from_pdf(file_bytes: bytes):
         for img in images:
             ocr_text = pytesseract.image_to_string(img)
             ocr_parts.append(ocr_text)
-        ocr_text_full = "\n".join(ocr_parts).strip()
-        return ocr_text_full, True
+        full = "\n".join(ocr_parts).strip()
+        return full, True
     except Exception as e:
         print("OCR error:", e)
-        raise HTTPException(
-            status_code=500, detail="Failed to extract text from PDF."
-        )
+        raise HTTPException(status_code=500, detail="Failed to extract text from PDF.")
 
 
 def build_simple_summary(text: str) -> str:
-    """
-    Rule-based summary (no external AI):
-    - Try to pick 'Abnormal Result(s) Summary', 'Impression', 'Conclusion', or 'Summary'
-    - Otherwise, return the first ~1200 characters.
-    """
     if not text:
         return "No text could be extracted from this report."
 
     lower = text.lower()
-
     markers = [
         "abnormal result(s) summary",
+        "abnormal results summary",
         "impression",
         "conclusion",
-        "summary",
+        "summary of report",
     ]
 
     for marker in markers:
         if marker in lower:
-            start_idx = lower.index(marker)
-            end_idx = min(len(text), start_idx + 1200)
-            block = text[start_idx:end_idx]
-            return block.strip()
+            start = lower.index(marker)
+            end = min(len(text), start + 1200)
+            return text[start:end].strip()
 
     return text[:1200].strip()
 
 
-# ---- ROOT + UPLOAD ENDPOINTS -------------------------------------------------
 @app.get("/")
 def root():
-    return {"message": "Hospital summarizer backend OK"}
+    using_gemini = bool(genai is not None and os.getenv("GEMINI_API_KEY"))
+    return {"message": "Hospital summarizer backend OK", "using_gemini": using_gemini}
 
 
 @app.post("/upload", response_model=HealthSummary)
@@ -127,20 +110,13 @@ async def upload_pdf(
     hospital_name: str = Form(...),
 ):
     if not pdf.filename.lower().endswith(".pdf"):
-        raise HTTPException(
-            status_code=400, detail="Only PDF files are supported right now."
-        )
+        raise HTTPException(status_code=400, detail="Only PDF files are supported right now.")
 
     file_bytes = await pdf.read()
-
-    # 1) Extract text (text or OCR)
     extracted_text, used_ocr = extract_text_from_pdf(file_bytes)
-
-    # 2) Build summary
     summary = build_simple_summary(extracted_text)
 
-    # 3) Build response object
-    result = HealthSummary(
+    return HealthSummary(
         hospital_name=hospital_name,
         filename=pdf.filename,
         extracted_text=extracted_text,
@@ -149,93 +125,94 @@ async def upload_pdf(
         created_at=datetime.utcnow().isoformat(),
     )
 
-    return result
 
-
-# ---- ASK-AI CHAT ENDPOINT ----------------------------------------------------
+# ----------------- AI CHAT -----------------
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 if genai is not None and GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
 else:
     if genai is None:
-        print("google-generativeai not installed; /chat will use fallback replies.")
+        print("google-generativeai not installed; /chat using fallback.")
     if not GEMINI_API_KEY:
-        print("GEMINI_API_KEY not set; /chat will use fallback replies.")
+        print("GEMINI_API_KEY not set; /chat using fallback.")
 
 
-def _fallback_chat_reply(user_message: str) -> str:
-    """Safe, rule-based answer if Gemini/DeepSeek is not available."""
-    text = (user_message or "").lower()
+def fallback_reply(user_message: str) -> str:
+    """
+    Question-specific safe answer if Gemini is unavailable.
+    """
+    msg = (user_message or "").strip()
+    lower = msg.lower()
 
-    base = (
-        "I’m a demo medical information assistant, not a doctor. "
-        "I can explain general concepts but I cannot diagnose, treat, or replace a clinician.\n\n"
+    header = f'You asked: "{msg}"\n\n' if msg else ""
+    disclaimer = (
+        "I’m a demo medical information assistant, not a doctor.\n"
+        "I can give general information only. For diagnosis or treatment, "
+        "please consult a qualified clinician.\n\n"
     )
 
-    if any(k in text for k in ["diabetes", "sugar", "hba1c"]):
-        detail = (
-            "In diabetes care, clinicians usually focus on blood sugar control, lifestyle "
-            "changes, regular lab monitoring (like HbA1c, fasting and post-meal sugars) and "
-            "screening for complications (eyes, kidneys, nerves, heart). Exact decisions "
-            "depend on the individual patient and local guidelines."
+    # Simple routing by keywords
+    if any(k in lower for k in ["hba1c", "hb a1c", "diabetes", "sugar", "glucose"]):
+        body = (
+            "• **HbA1c** shows average blood glucose over ~3 months.\n"
+            "• Typical ranges (may vary by guidelines):\n"
+            "  - < 5.7%: usually non-diabetic\n"
+            "  - 5.7–6.4%: pre-diabetes range\n"
+            "  - ≥ 6.5%: diabetes range\n"
+            "• Targets depend on age, comorbidities and local protocols."
         )
-    elif any(k in text for k in ["blood pressure", "bp", "hypertension"]):
-        detail = (
-            "For high blood pressure, typical management includes regular BP checks, salt "
-            "restriction, exercise, weight control and medications when prescribed. Targets "
-            "and medicines depend on age, comorbidities and overall risk profile."
+    elif any(k in lower for k in ["hemoglobin", "haemoglobin", "hb "]):
+        body = (
+            "• **Haemoglobin (Hb)** is the oxygen-carrying protein in red blood cells.\n"
+            "• Low Hb = anaemia (common causes: iron/B12/folate deficiency, blood loss, chronic disease).\n"
+            "• Interpretation needs RBC indices (MCV, MCHC) + clinical context."
+        )
+    elif any(k in lower for k in ["blood", "cbc", "blood test"]):
+        body = (
+            "Blood carries oxygen, nutrients, hormones and waste products.\n"
+            "Common blood tests:\n"
+            "• CBC – counts cells (Hb, WBC, platelets).\n"
+            "• LFT – liver enzymes and proteins.\n"
+            "• RFT – kidney function (urea, creatinine, electrolytes).\n"
+            "Exact meaning always depends on symptoms and exam."
         )
     else:
-        detail = (
-            "In general, doctors combine symptoms, examination, labs and imaging to decide "
-            "diagnosis and treatment. Any online answer is only general information and "
-            "must be confirmed with a qualified clinician who knows the full case."
+        body = (
+            "Doctors usually combine:\n"
+            "• History and physical examination\n"
+            "• Lab reports and imaging\n"
+            "before deciding diagnosis or treatment.\n"
+            "Online tools are only for education and must not replace a doctor visit."
         )
 
-    return base + detail
+    return header + disclaimer + body
 
 
 @app.post("/chat", response_model=ChatResponse)
-async def chat_endpoint(req: ChatRequest):
-    """
-    Demo medical info chatbot.
-
-    • If GEMINI_API_KEY is set and google-generativeai is installed:
-        → uses Gemini model for the reply.
-    • Otherwise:
-        → uses safe, rule-based fallback text.
-    """
+async def chat(req: ChatRequest):
     user_message = req.message or ""
 
-    # --- If Gemini not available, use fallback ------------------------------
     if genai is None or not GEMINI_API_KEY:
-        reply = _fallback_chat_reply(user_message)
-        return ChatResponse(reply=reply)
+        return ChatResponse(reply=fallback_reply(user_message))
 
-    # --- Gemini call --------------------------------------------------------
     system_prompt = (
-        "You are a cautious medical information assistant for doctors and patients.\n"
-        "- You ONLY provide general medical information and education.\n"
-        "- You NEVER give personal diagnosis, prescriptions, or emergency advice.\n"
-        "- Always remind users to consult a qualified clinician for decisions.\n"
-        "- If the question is about emergencies (chest pain, stroke, suicide, etc.), "
-        "tell them to seek urgent in-person care immediately.\n"
+        "You are a cautious medical information assistant.\n"
+        "- Provide general information only, no personal diagnosis or prescriptions.\n"
+        "- Always remind users to consult a doctor for medical decisions.\n"
+        "- Use short paragraphs and bullet points.\n"
     )
 
     try:
         model = genai.GenerativeModel("gemini-1.5-flash")
         response = model.generate_content(
-            [
-                system_prompt,
-                f"User message: {user_message}",
-            ]
+            [system_prompt, f"User question: {user_message}"]
         )
-        answer_text = (response.text or "").strip()
-        if not answer_text:
-            answer_text = _fallback_chat_reply(user_message)
+        text = (getattr(response, "text", "") or "").strip()
+        if not text:
+            text = fallback_reply(user_message)
     except Exception as e:
         print("Gemini error:", e)
-        answer_text = _fallback_chat_reply(user_message)
+        text = fallback_reply(user_message)
 
-    return ChatResponse(reply=answer_text)
+    return ChatResponse(reply=text)

@@ -11,7 +11,6 @@ import DoctorsCorner from "./components/DoctorsCorner";
 import AskAIWidget from "./components/AskAIWidget";
 import "./index.css";
 
-// ---------- METRIC EXTRACTION PATTERNS ----------
 const METRIC_PATTERNS = {
   HbA1c:
     /(HbA1c|HbA1C|Glyco[\s-]*Hemoglobin|Glycated[\s-]*Haemoglobin)[^\d]{0,40}(\d+(\.\d+)?)/i,
@@ -44,6 +43,9 @@ export default function App() {
   const [summaryHistory, setSummaryHistory] = useState({});
   const [historyFilter, setHistoryFilter] = useState("all");
 
+  // overlay sidebar (for ALL screen sizes)
+  const [sidebarOverlayOpen, setSidebarOverlayOpen] = useState(false);
+
   const uploadSectionRef = useRef(null);
 
   const scrollToUpload = () => {
@@ -57,19 +59,24 @@ export default function App() {
 
   const handleSelectHospital = (name) => {
     setSelectedHospital(name);
+    setSidebarOverlayOpen(false);
     scrollToUpload();
   };
 
   const addHospital = () => {
     const name = prompt("Enter hospital name");
     if (!name) return;
+
     if (hospitals.includes(name)) {
       setSelectedHospital(name);
+      setSidebarOverlayOpen(false);
       scrollToUpload();
       return;
     }
+
     setHospitals((prev) => [...prev, name]);
     setSelectedHospital(name);
+    setSidebarOverlayOpen(false);
     scrollToUpload();
   };
 
@@ -107,9 +114,8 @@ export default function App() {
   const todayKey = now.toISOString().slice(0, 10);
   const filteredSummaries = hospitalSummaries.filter((item) => {
     if (historyFilter === "all") return true;
-    if (historyFilter === "today") {
+    if (historyFilter === "today")
       return item.createdAt.slice(0, 10) === todayKey;
-    }
     if (historyFilter === "week") {
       const d = new Date(item.createdAt);
       const diffDays = (now - d) / (1000 * 60 * 60 * 24);
@@ -119,27 +125,64 @@ export default function App() {
   });
 
   return (
-    <div className="relative flex flex-col md:flex-row min-h-screen bg-[#eef5ff] overflow-x-hidden">
-      {/* LEFT SIDEBAR */}
-      <div className="w-full md:w-64 border-b md:border-b-0 md:border-r bg-white">
-        <HospitalList
-          hospitals={hospitals}
-          selected={selectedHospital}
-          setSelected={handleSelectHospital}
-          addHospital={addHospital}
-        />
-      </div>
+    <div className="relative min-h-screen bg-[#eef5ff] overflow-x-hidden">
+      {/* HAMBURGER – always visible top-left */}
+      <button
+        onClick={() => setSidebarOverlayOpen(true)}
+        className="fixed top-3 left-3 z-40 p-2 rounded-md border bg-white shadow-md flex flex-col justify-center gap-[3px]"
+        aria-label="Select hospital"
+      >
+        <span className="w-4 h-0.5 bg-gray-900 rounded" />
+        <span className="w-4 h-0.5 bg-gray-900 rounded" />
+        <span className="w-4 h-0.5 bg-gray-900 rounded" />
+      </button>
 
-      {/* MAIN CONTENT */}
-      <div className="flex-1 p-4 md:p-8 overflow-y-auto">
-        <h1 className="text-xl md:text-2xl font-bold">Hospital Dashboard</h1>
+      {/* OVERLAY DRAWER – pops from LEFT on laptop + phone */}
+      {sidebarOverlayOpen && (
+        <div className="fixed inset-0 z-50 flex">
+          {/* Drawer */}
+          <div className="w-64 bg-white h-full shadow-xl pt-6 animate-[slideIn_0.2s_ease-out]">
+            <div className="px-4 pb-3 border-b flex items-center justify-between">
+              <h2 className="text-base font-semibold">Select hospital</h2>
+              <button
+                onClick={() => setSidebarOverlayOpen(false)}
+                className="text-sm text-gray-500"
+              >
+                ✕
+              </button>
+            </div>
+            <HospitalList
+              hospitals={hospitals}
+              selected={selectedHospital}
+              setSelected={handleSelectHospital}
+              addHospital={addHospital}
+            />
+          </div>
+
+          {/* Dark overlay */}
+          <div
+            className="flex-1 bg-black/40"
+            onClick={() => setSidebarOverlayOpen(false)}
+          />
+
+          <style>{`
+            @keyframes slideIn {
+              0% { transform: translateX(-100%); }
+              100% { transform: translateX(0); }
+            }
+          `}</style>
+        </div>
+      )}
+
+      {/* MAIN CONTENT (full width) */}
+      <div className="px-4 md:px-8 pt-14 pb-8 max-w-6xl mx-auto">
+        {/* Header always visible */}
+        <h1 className="text-2xl font-bold">Hospital Dashboard</h1>
 
         <div className="flex flex-col md:flex-row md:items-center md:justify-between mt-3 mb-4 gap-3">
           <div>
-            <h2 className="text-lg md:text-xl font-semibold">
-              {selectedHospital}
-            </h2>
-            <p className="text-xs md:text-sm text-gray-600">
+            <h2 className="text-xl font-semibold">{selectedHospital}</h2>
+            <p className="text-sm text-gray-600">
               Upload reports &amp; generate summaries
             </p>
           </div>
@@ -169,33 +212,27 @@ export default function App() {
           <SummaryCard summary={currentSummary} />
         </div>
 
-        {/* AI health insights */}
         <div className="mt-6">
           <InsightsPanel summary={currentSummary} />
         </div>
 
-        {/* Documentation + protocols */}
         <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
           <DocumentationCopilot summary={currentSummary} />
           <ProtocolHints summary={currentSummary} />
         </div>
 
-        {/* Lifestyle */}
         <div className="mt-6">
           <LifestylePanel summary={currentSummary} />
         </div>
 
-        {/* Trends */}
         <div className="mt-6">
           <TrendsPanel summaries={hospitalSummaries} />
         </div>
 
-        {/* Doctor's Corner */}
         <div className="mt-8">
           <DoctorsCorner summaries={hospitalSummaries} />
         </div>
 
-        {/* History */}
         <div className="mt-8 pb-10">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-3 gap-3">
             <h3 className="text-lg md:text-xl font-semibold">
@@ -264,7 +301,7 @@ export default function App() {
         </div>
       </div>
 
-      {/* Floating Ask AI */}
+      {/* Floating AI chat */}
       <AskAIWidget />
     </div>
   );

@@ -3,12 +3,12 @@ import React, { useState } from "react";
 const API_BASE = "https://hospital-backend-iqva.onrender.com";
 
 export default function AskAIWidget() {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true); // start open so you SEE it
   const [messages, setMessages] = useState([
     {
       role: "assistant",
       text:
-        "Hi, I’m a demo medical information assistant. I can explain lab terms and give general info, but I’m NOT a doctor. Always consult a clinician.",
+        "Hi, I’m a medical information bot (demo). I explain lab terms and give general info, but I’m NOT a doctor. Always confirm with a clinician.",
     },
   ]);
   const [input, setInput] = useState("");
@@ -18,7 +18,6 @@ export default function AskAIWidget() {
     const trimmed = input.trim();
     if (!trimmed || loading) return;
 
-    // add user message locally
     setMessages((prev) => [...prev, { role: "user", text: trimmed }]);
     setInput("");
     setLoading(true);
@@ -30,17 +29,16 @@ export default function AskAIWidget() {
         body: JSON.stringify({ message: trimmed }),
       });
 
-      let replyText =
+      let reply =
         "I had trouble reaching the AI service. Please try again later.";
       if (res.ok) {
         const data = await res.json();
-        if (data && data.reply) replyText = data.reply;
+        if (data && data.reply) reply = data.reply;
+      } else {
+        console.error("Chat HTTP error:", res.status);
       }
 
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", text: replyText },
-      ]);
+      setMessages((prev) => [...prev, { role: "assistant", text: reply }]);
     } catch (err) {
       console.error("Chat error:", err);
       setMessages((prev) => [
@@ -48,7 +46,7 @@ export default function AskAIWidget() {
         {
           role: "assistant",
           text:
-            "There was a network error talking to the AI service. This is just a prototype; please try again later.",
+            "Network error talking to the AI backend. This is just a prototype; please try again later.",
         },
       ]);
     } finally {
@@ -58,7 +56,6 @@ export default function AskAIWidget() {
 
   return (
     <>
-      {/* Floating button */}
       {!open && (
         <button
           onClick={() => setOpen(true)}
@@ -69,7 +66,6 @@ export default function AskAIWidget() {
         </button>
       )}
 
-      {/* Chat panel */}
       {open && (
         <div className="fixed bottom-4 right-4 z-40 w-72 sm:w-80 max-h-[70vh] rounded-2xl shadow-2xl bg-white border flex flex-col overflow-hidden">
           <div className="px-3 py-2 border-b flex items-center justify-between bg-blue-600 text-white text-xs">
@@ -83,8 +79,7 @@ export default function AskAIWidget() {
           </div>
 
           <div className="px-3 pt-2 pb-1 text-[10px] text-gray-500 border-b">
-            Not a doctor. For general information only. Do not use for
-            emergencies.
+            Not a doctor. For general information only. Don’t use for emergencies.
           </div>
 
           <div className="flex-1 overflow-y-auto px-3 py-2 space-y-2 text-xs">
